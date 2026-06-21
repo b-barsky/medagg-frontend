@@ -1,34 +1,72 @@
 import { useEffect, useState } from "react";
-import { Row, Col, Spin, Typography } from "antd";
+import {
+  Row,
+  Col,
+  Spin,
+  Typography,
+  Pagination,
+} from "antd";
 import { FrownOutlined } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 
 import DatasetCard from "../components/DatasetCard";
 import { getDatasets } from "../api/datasets";
 
-const { Title, Text } = Typography;
+const { Title } = Typography;
 
 export default function DatasetsPage() {
-    const navigate = useNavigate();
+    const PAGE_SIZE = 20;
 
     const [datasets, setDatasets] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(false);
+    const [count, setCount] = useState(0);
+    const [page, setPage] = useState(1);
 
     useEffect(() => {
-        getDatasets()
+        const controller = new AbortController();
+        let active = true;
+
+        setLoading(true);
+
+        getDatasets({
+            page,
+            signal: controller.signal,
+        })
             .then((data) => {
-                setDatasets(Array.isArray(data) ? data : []);
+                if (!active) {
+                    return;
+                }
+
+                setDatasets(
+                    Array.isArray(data?.results)
+                        ? data.results
+                        : [],
+                );
+                setCount(data?.count ?? 0);
                 setError(false);
             })
-            .catch(() => {
-                setError(true);
-                setDatasets([]);
+            .catch((requestError) => {
+                if (
+                    active &&
+                    requestError.name !== "AbortError"
+                ) {
+                    setError(true);
+                    setDatasets([]);
+                    setCount(0);
+                }
             })
             .finally(() => {
-                setLoading(false);
+                if (active) {
+                    setLoading(false);
+                }
             });
-    }, []);
+
+        return () => {
+            active = false;
+            controller.abort();
+        };
+    }, [page]);
 
     return (
         <div style={{ maxWidth: 1300, margin: "0 auto" }}>
@@ -74,21 +112,28 @@ export default function DatasetsPage() {
 
             {!loading && datasets.length > 0 && (
                 <Row gutter={[16, 16]}>
-                    {datasets.map((ds) => (
+                    {datasets.map((dataset) => (
                         <Col
-                            key={ds.id}
+                            key={dataset.id}
                             xs={24}
-                            sm={12}
                             md={12}
-                            lg={8}
                             xl={8}
                         >
-                            <DatasetCard
-                                data={ds}
-                                onMore={() => navigate(`/datasets/${ds.id}`)}
-                            />
+                            <DatasetCard data={dataset} />
                         </Col>
                     ))}
+                </Row>
+            )}
+
+            {!loading && !error && count > PAGE_SIZE && (
+                <Row justify="center" style={{ marginTop: 24 }}>
+                    <Pagination
+                        current={page}
+                        pageSize={PAGE_SIZE}
+                        total={count}
+                        showSizeChanger={false}
+                        onChange={setPage}
+                    />
                 </Row>
             )}
         </div>

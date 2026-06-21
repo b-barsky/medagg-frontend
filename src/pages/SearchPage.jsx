@@ -1,5 +1,11 @@
 import { useState } from "react";
-import { Row, Col, Spin, Typography } from "antd";
+import {
+  Row,
+  Col,
+  Spin,
+  Typography,
+  Pagination,
+} from "antd";
 import {
     SearchOutlined,
     ClockCircleOutlined,
@@ -14,19 +20,32 @@ import { searchDatasets } from "../api/datasets";
 const { Text } = Typography;
 
 export default function SearchPage() {
+    const PAGE_SIZE = 20;
+
+    const [page, setPage] = useState(1);
+    const [count, setCount] = useState(0);
     const [query, setQuery] = useState("");
-    const [filters, setFilters] = useState([]);
+    const [filters, setFilters] = useState({
+        modalities_list: [],
+        tags_list: [],
+    });
 
     const [results, setResults] = useState([]);
     const [status, setStatus] = useState("idle");
     // idle | loading | success | empty | timeout | error
 
-    const handleSearch = async () => {
- 
-        if (!query.trim()) return;
+    const handleSearch = async (nextPage = 1) => {
+        const normalizedQuery = query.trim();
+
+        if (!normalizedQuery) {
+            return;
+        }
 
         setStatus("loading");
-        setResults([]);
+
+        if (nextPage === 1) {
+            setResults([]);
+        }
 
         const controller = new AbortController();
 
@@ -36,17 +55,24 @@ export default function SearchPage() {
         }, 15000);
 
         try {
-            const response = await searchDatasets(query, controller.signal);
+            const response = await searchDatasets(
+                normalizedQuery,
+                filters,
+                {
+                  page: nextPage,
+                  signal: controller.signal,
+                },
+            );
+
             const data = response?.results ?? [];
 
-            if (data.length === 0) {
-                setStatus("empty");
-            } else {
-                setResults(data);
-                setStatus("success");
-            }
-        } catch (err) {
-            if (err.name !== "AbortError") {
+            setResults(data);
+            setCount(response?.count ?? data.length);
+            setPage(nextPage);
+
+            setStatus(data.length === 0 ? "empty" : "success");
+        } catch (error) {
+            if (error.name !== "AbortError") {
                 setStatus("error");
             }
         } finally {
@@ -144,14 +170,16 @@ export default function SearchPage() {
                         )}
                     </div>
 
-                    {status === "success" && (
-                        <Row gutter={[16, 16]} style={{ marginTop: 20 }}>
-                            {results.map((ds) => (
-                                <Col xs={24} md={12} key={ds.id}>
-                                    <DatasetCard data={ds} />
-                                </Col>
-                            ))}
-                        </Row>
+                    {status === "success" && count > PAGE_SIZE && (
+                      <Row justify="center" style={{ marginTop: 24 }}>
+                        <Pagination
+                          current={page}
+                          pageSize={PAGE_SIZE}
+                          total={count}
+                          showSizeChanger={false}
+                          onChange={(nextPage) => handleSearch(nextPage)}
+                        />
+                      </Row>
                     )}
                 </Col>
 

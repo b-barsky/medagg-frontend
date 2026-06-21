@@ -1,57 +1,98 @@
-import { Card, Collapse, Checkbox } from "antd";
+import {
+  Button,
+  Card,
+  Checkbox,
+  Collapse,
+} from "antd";
 
-export default function FiltersPanel({ filters, setFilters }) {
-  const allFilters = {
-    type: [
-      { label: "Изображения (MRI, CT)", value: "imaging" },
-      { label: "Геномика", value: "genomics" },
-      { label: "Клинические записи", value: "clinical" },
-      { label: "Носимые устройства", value: "wearable" },
-    ],
-    pathology: [
-      { label: "Онкология", value: "cancer" },
-      { label: "Нейро", value: "neuro" },
-      { label: "Кардиология", value: "cardio" },
-      { label: "COVID-19", value: "covid" },
-    ],
+const FILTER_OPTIONS = {
+  modalities_list: [
+    {
+      label: "MRI",
+      value: "MRI",
+    },
+    {
+      label: "CT",
+      value: "CT",
+    },
+  ],
+  tags_list: [
+    {
+      label: "Онкология",
+      value: "cancer",
+    },
+    {
+      label: "Нейро",
+      value: "neuro",
+    },
+    {
+      label: "Кардиология",
+      value: "cardio",
+    },
+    {
+      label: "COVID-19",
+      value: "covid",
+    },
+  ],
+};
+
+const EMPTY_FILTERS = {
+  modalities_list: [],
+  tags_list: [],
+};
+
+export default function FiltersPanel({
+  filters,
+  setFilters,
+}) {
+  const updateFilter = (name, values) => {
+    setFilters((currentFilters) => ({
+      ...currentFilters,
+      [name]: values,
+    }));
   };
 
-  const clearFilters = () => setFilters([]);
-  const handleChange = (checkedValues) => setFilters(checkedValues);
+  const clearFilters = () => {
+    setFilters({
+      ...EMPTY_FILTERS,
+    });
+  };
 
   const collapseItems = [
     {
-      key: "type",
-      label: "Тип данных",
+      key: "modalities",
+      label: "Модальности",
       children: (
         <Checkbox.Group
-          style={{ display: "flex", flexDirection: "column", gap: 6 }}
-          value={filters}
-          onChange={handleChange}
-        >
-          {allFilters.type.map((f) => (
-            <Checkbox key={f.value} value={f.value}>
-              {f.label}
-            </Checkbox>
-          ))}
-        </Checkbox.Group>
+          options={FILTER_OPTIONS.modalities_list}
+          value={filters.modalities_list}
+          onChange={(values) =>
+            updateFilter("modalities_list", values)
+          }
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+          }}
+        />
       ),
     },
     {
-      key: "pathology",
+      key: "tags",
       label: "Патология",
       children: (
         <Checkbox.Group
-          style={{ display: "flex", flexDirection: "column", gap: 6 }}
-          value={filters}
-          onChange={handleChange}
-        >
-          {allFilters.pathology.map((f) => (
-            <Checkbox key={f.value} value={f.value}>
-              {f.label}
-            </Checkbox>
-          ))}
-        </Checkbox.Group>
+          options={FILTER_OPTIONS.tags_list}
+          value={filters.tags_list}
+          onChange={(values) =>
+            updateFilter("tags_list", values)
+          }
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+          }}
+        />
       ),
     },
   ];
@@ -60,12 +101,13 @@ export default function FiltersPanel({ filters, setFilters }) {
     <Card
       title="Фильтры"
       extra={
-        <a
+        <Button
+          type="link"
+          size="small"
           onClick={clearFilters}
-          style={{ cursor: "pointer", fontSize: 13 }}
         >
           Очистить
-        </a>
+        </Button>
       }
       styles={{
         body: {
@@ -76,8 +118,8 @@ export default function FiltersPanel({ filters, setFilters }) {
       }}
     >
       <Collapse
+        ghost
         items={collapseItems}
-        bordered={false}
       />
     </Card>
   );
