@@ -16,6 +16,13 @@ function safeYear(date) {
   return Number.isNaN(year) ? null : year;
 }
 
+function relationName(value) {
+  if (typeof value === "string") {
+    return value;
+  }
+  return value?.name ?? "";
+}
+
 export default function DatasetCard({ data }) {
   const navigate = useNavigate();
 
@@ -74,8 +81,25 @@ export default function DatasetCard({ data }) {
 
       <Space wrap style={{ marginTop: 12 }}>
         {Array.isArray(tags) &&
-          tags.slice(0, 4).map((tag) => <Tag key={tag}>{tag}</Tag>)}
+          tags.slice(0, 4).map((tag, index) => {
+            const name = relationName(tag);
 
+            if (!name) {
+              return null;
+            }
+
+            return (
+              <Tag
+                key={
+                  typeof tag === "object"
+                    ? tag.id
+                    : `${name}-${index}`
+                }
+              >
+                {name}
+              </Tag>
+            );
+          })}
         <Tooltip title={lic.label}>
           <Tag color={lic.color}>{lic.code}</Tag>
         </Tooltip>

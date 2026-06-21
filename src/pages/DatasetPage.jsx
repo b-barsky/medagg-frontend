@@ -24,6 +24,13 @@ function safeYear(date) {
     return Number.isNaN(d.getTime()) ? null : d.getFullYear();
 }
 
+function relationName(value) {
+  if (typeof value === "string") {
+    return value;
+  }
+  return value?.name ?? "";
+}
+
 export default function DatasetPage() {
     const { id } = useParams();
 
@@ -99,8 +106,16 @@ export default function DatasetPage() {
             <Title level={2}>{title}</Title>
 
             <Space size={8} wrap>
-                {tags?.map((tag) => (
-                    <Tag key={tag}>{tag}</Tag>
+                {tags?.map((tag, index) => (
+                    <Tag
+                        key={
+                            typeof tag === "object"
+                                ? tag.id
+                                : `${relationName(tag)}-${index}`
+                        }
+                    >
+                        {relationName(tag)}
+                    </Tag>
                 ))}
                 <Tag color="blue">{anatomical_area_name}</Tag>
                 <Tag>ID: {id}</Tag>
@@ -169,20 +184,42 @@ export default function DatasetPage() {
                     </Space>
 
                     {modalities?.length > 0 && (
-                        <Space wrap>
+                        <Space direction="vertical">
                             <Text strong>Модальности:</Text>
-                            {modalities.map((m) => (
-                                <Tag color="geekblue" key={m}>{m}</Tag>
-                            ))}
+
+                            <Space wrap>
+                                {modalities.map((modality, index) => (
+                                    <Tag
+                                        key={
+                                            typeof modality === "object"
+                                                ? modality.id
+                                                : `${relationName(modality)}-${index}`
+                                        }
+                                    >
+                                        {relationName(modality)}
+                                    </Tag>
+                                ))}
+                            </Space>
                         </Space>
                     )}
 
                     {ml_tasks?.length > 0 && (
-                        <Space wrap>
+                        <Space direction="vertical">
                             <Text strong>ML-задачи:</Text>
-                            {ml_tasks.map((task) => (
-                                <Tag color="green" key={task}>{task}</Tag>
-                            ))}
+
+                            <Space wrap>
+                                {ml_tasks.map((task, index) => (
+                                    <Tag
+                                        key={
+                                            typeof task === "object"
+                                                ? task.id
+                                                : `${relationName(task)}-${index}`
+                                        }
+                                    >
+                                        {relationName(task)}
+                                    </Tag>
+                                ))}
+                            </Space>
                         </Space>
                     )}
                 </Space>
