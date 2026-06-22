@@ -13,6 +13,21 @@ function apiLocation() {
   return origin ? `${origin}${API_URL}` : API_URL;
 }
 
+function cookieValue(name) {
+  const cookie = globalThis.document?.cookie ?? "";
+  const prefix = `${encodeURIComponent(name)}=`;
+
+  for (const part of cookie.split(";")) {
+    const value = part.trim();
+
+    if (value.startsWith(prefix)) {
+      return decodeURIComponent(value.slice(prefix.length));
+    }
+  }
+
+  return null;
+}
+
 async function parseResponse(response, fallbackMessage) {
   const payload = await response.json().catch(() => null);
 
@@ -34,13 +49,31 @@ async function parseResponse(response, fallbackMessage) {
 
 async function requestJson(
   url,
-  options,
+  options = {},
   fallbackMessage,
 ) {
+  const method = (options.method ?? "GET").toUpperCase();
+  const headers = new Headers(options.headers ?? {});
+  const csrfToken = cookieValue("csrftoken");
+
+  headers.set("Accept", "application/json");
+
+  if (
+    csrfToken &&
+    !["GET", "HEAD", "OPTIONS", "TRACE"].includes(method)
+  ) {
+    headers.set("X-CSRFToken", csrfToken);
+  }
+
   let response;
 
   try {
-    response = await fetch(url, options);
+    response = await fetch(url, {
+      credentials: "same-origin",
+      ...options,
+      method,
+      headers,
+    });
   } catch (error) {
     if (error?.name === "AbortError") {
       throw error;
@@ -71,12 +104,7 @@ export async function getDatasets({
 
   return requestJson(
     `${API_URL}/datasets/?${parameters.toString()}`,
-    {
-      headers: {
-        Accept: "application/json",
-      },
-      signal,
-    },
+    { signal },
     "Failed to load datasets",
   );
 }
@@ -87,12 +115,7 @@ export async function getDatasetById(
 ) {
   return requestJson(
     `${API_URL}/datasets/${encodeURIComponent(id)}/`,
-    {
-      headers: {
-        Accept: "application/json",
-      },
-      signal,
-    },
+    { signal },
     "Dataset not found",
   );
 }
@@ -119,7 +142,6 @@ export async function createSearchRun(
     {
       method: "POST",
       headers: {
-        Accept: "application/json",
         "Content-Type": "application/json",
       },
       body: JSON.stringify(body),
@@ -148,11 +170,63 @@ export async function getSearchRun(
     )}/?${parameters.toString()}`,
     {
       cache: "no-store",
-      headers: {
-        Accept: "application/json",
-      },
       signal,
     },
     "Failed to refresh search",
+  );
+}
+
+export async function createDatasetImport(
+  sourceDatasetId,
+  licenseFingerprint,
+  { signal } = {},
+) {
+  return requestJson(
+    `${API_URL}/datasets/imports/`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        source_dataset_id: sourceDatasetId,
+        accept_license: true,
+        license_fingerprint: licenseFingerprint,
+      }),
+      signal,
+    },
+    "Failed to start dataset import",
+  );
+}
+
+export async function getDatasetImport(
+  importId,
+  { signal } = {},
+) {
+  return requestJson(
+    `${API_URL}/datasets/imports/${encodeURIComponent(
+      importId,
+    )}/`,
+    {
+      cache: "no-store",
+      signal,
+    },
+    "Failed to refresh dataset import",
+  );
+}
+
+export async function getArtifactDownload(
+  artifactId,
+  { signal } = {},
+) {
+  return requestJson(
+    `${API_URL}/datasets/artifacts/${encodeURIComponent(
+      artifactId,
+    )}/download/`,
+    {
+      cache: "no-store",
+      signal,
+    },
+    "Failed to prepare artifact download",
   );
 }

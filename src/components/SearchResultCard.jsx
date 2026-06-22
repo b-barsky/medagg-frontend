@@ -12,6 +12,8 @@ import {
   StarOutlined,
 } from "@ant-design/icons";
 
+import DatasetImportButton from "./DatasetImportButton";
+
 
 const { Paragraph, Text, Title } = Typography;
 
@@ -124,6 +126,10 @@ export default function SearchResultCard({ data }) {
         >
           Открыть источник
         </Button>,
+        <DatasetImportButton
+          key="import"
+          dataset={data}
+        />,
       ]}
     >
       <Space
