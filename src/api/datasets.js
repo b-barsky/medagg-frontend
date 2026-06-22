@@ -1,48 +1,64 @@
 const API_URL = (
   import.meta.env.VITE_API_URL ??
-  "http://localhost:8000/api/v1"
+  "/api/v1"
 ).replace(/\/+$/, "");
+
+function apiLocation() {
+  if (/^https?:\/\//i.test(API_URL)) {
+    return API_URL;
+  }
+
+  const origin = globalThis.location?.origin;
+
+  return origin ? `${origin}${API_URL}` : API_URL;
+}
 
 async function parseResponse(response, fallbackMessage) {
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
     const detail = payload?.detail ?? payload ?? fallbackMessage;
-
-    throw new Error(
+    const error = new Error(
       typeof detail === "string"
         ? detail
         : JSON.stringify(detail),
     );
+
+    error.status = response.status;
+    error.payload = payload;
+    throw error;
   }
 
   return payload;
 }
 
-function buildQueryParameters(filters, page) {
-  const parameters = new URLSearchParams({
-    page: String(page),
-  });
+async function requestJson(
+  url,
+  options,
+  fallbackMessage,
+) {
+  let response;
 
-  Object.entries(filters ?? {}).forEach(([name, value]) => {
-    if (Array.isArray(value)) {
-      if (value.length > 0) {
-        parameters.set(name, value.join(","));
-      }
-
-      return;
+  try {
+    response = await fetch(url, options);
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw error;
     }
 
-    if (
-      value !== undefined &&
-      value !== null &&
-      value !== ""
-    ) {
-      parameters.set(name, String(value));
-    }
-  });
+    const networkError = new Error(
+      `Cannot reach the backend API at ${apiLocation()}. ` +
+        "Check that Django is running on port 8000 and that " +
+        "VITE_API_URL/VITE_DEV_API_TARGET are configured correctly.",
+    );
 
-  return parameters;
+    networkError.name = "ApiNetworkError";
+    networkError.isNetworkError = true;
+    networkError.cause = error;
+    throw networkError;
+  }
+
+  return parseResponse(response, fallbackMessage);
 }
 
 export async function getDatasets({
@@ -53,13 +69,14 @@ export async function getDatasets({
     page: String(page),
   });
 
-  const response = await fetch(
+  return requestJson(
     `${API_URL}/datasets/?${parameters.toString()}`,
-    { signal },
-  );
-
-  return parseResponse(
-    response,
+    {
+      headers: {
+        Accept: "application/json",
+      },
+      signal,
+    },
     "Failed to load datasets",
   );
 }
@@ -68,38 +85,74 @@ export async function getDatasetById(
   id,
   { signal } = {},
 ) {
-  const response = await fetch(
+  return requestJson(
     `${API_URL}/datasets/${encodeURIComponent(id)}/`,
-    { signal },
-  );
-
-  return parseResponse(
-    response,
+    {
+      headers: {
+        Accept: "application/json",
+      },
+      signal,
+    },
     "Dataset not found",
   );
 }
 
-export async function searchDatasets(
+export async function createSearchRun(
   query,
-  filters = {},
+  sources,
   {
-    page = 1,
+    providerPage = 1,
     signal,
   } = {},
 ) {
-  const parameters = buildQueryParameters(filters, page);
+  const body = {
+    query,
+    provider_page: providerPage,
+  };
 
-  const response = await fetch(
-    `${API_URL}/search/datasets/?${parameters.toString()}`,
+  if (Array.isArray(sources)) {
+    body.sources = sources;
+  }
+
+  return requestJson(
+    `${API_URL}/search/datasets/`,
     {
       method: "POST",
       headers: {
+        Accept: "application/json",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ query }),
+      body: JSON.stringify(body),
       signal,
     },
+    "Failed to create search",
   );
+}
 
-  return parseResponse(response, "Search failed");
+export async function getSearchRun(
+  searchRunId,
+  {
+    page = 1,
+    pageSize = 20,
+    signal,
+  } = {},
+) {
+  const parameters = new URLSearchParams({
+    page: String(page),
+    page_size: String(pageSize),
+  });
+
+  return requestJson(
+    `${API_URL}/search/datasets/${encodeURIComponent(
+      searchRunId,
+    )}/?${parameters.toString()}`,
+    {
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+      },
+      signal,
+    },
+    "Failed to refresh search",
+  );
 }

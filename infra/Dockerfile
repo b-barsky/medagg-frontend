@@ -1,4 +1,3 @@
-# 1. Build stage
 FROM node:20-alpine AS build
 
 WORKDIR /app
@@ -10,13 +9,13 @@ COPY . .
 RUN npm run build
 
 
-# 2. Nginx production stage
 FROM nginx:alpine
 
-COPY --from=build /app/dist /usr/share/nginx/html
+ENV BACKEND_URL=http://medagg-app:8000
 
-# Replace default config
-COPY infra/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=build /app/dist /usr/share/nginx/html
+COPY infra/nginx.conf /etc/nginx/templates/default.conf.template
 
 EXPOSE 80
+
 CMD ["nginx", "-g", "daemon off;"]

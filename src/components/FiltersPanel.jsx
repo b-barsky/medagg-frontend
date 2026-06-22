@@ -2,125 +2,66 @@ import {
   Button,
   Card,
   Checkbox,
-  Collapse,
+  Space,
+  Typography,
 } from "antd";
 
-const FILTER_OPTIONS = {
-  modalities_list: [
-    {
-      label: "MRI",
-      value: "MRI",
-    },
-    {
-      label: "CT",
-      value: "CT",
-    },
-  ],
-  tags_list: [
-    {
-      label: "Онкология",
-      value: "cancer",
-    },
-    {
-      label: "Нейро",
-      value: "neuro",
-    },
-    {
-      label: "Кардиология",
-      value: "cardio",
-    },
-    {
-      label: "COVID-19",
-      value: "covid",
-    },
-  ],
-};
 
-const EMPTY_FILTERS = {
-  modalities_list: [],
-  tags_list: [],
-};
+const { Text } = Typography;
+
+const SOURCE_OPTIONS = [
+  {
+    label: "Kaggle",
+    value: "kaggle",
+  },
+];
+
+const DEFAULT_SOURCES = SOURCE_OPTIONS.map(
+  (source) => source.value,
+);
 
 export default function FiltersPanel({
-  filters,
-  setFilters,
+  sources,
+  setSources,
 }) {
-  const updateFilter = (name, values) => {
-    setFilters((currentFilters) => ({
-      ...currentFilters,
-      [name]: values,
-    }));
+  const resetSources = () => {
+    setSources([...DEFAULT_SOURCES]);
   };
-
-  const clearFilters = () => {
-    setFilters({
-      ...EMPTY_FILTERS,
-    });
-  };
-
-  const collapseItems = [
-    {
-      key: "modalities",
-      label: "Модальности",
-      children: (
-        <Checkbox.Group
-          options={FILTER_OPTIONS.modalities_list}
-          value={filters.modalities_list}
-          onChange={(values) =>
-            updateFilter("modalities_list", values)
-          }
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-          }}
-        />
-      ),
-    },
-    {
-      key: "tags",
-      label: "Патология",
-      children: (
-        <Checkbox.Group
-          options={FILTER_OPTIONS.tags_list}
-          value={filters.tags_list}
-          onChange={(values) =>
-            updateFilter("tags_list", values)
-          }
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 8,
-          }}
-        />
-      ),
-    },
-  ];
 
   return (
     <Card
-      title="Фильтры"
+      title="Источники"
       extra={
         <Button
           type="link"
           size="small"
-          onClick={clearFilters}
+          onClick={resetSources}
         >
-          Очистить
+          Сбросить
         </Button>
       }
       styles={{
         body: {
-          maxHeight: 400,
-          overflowY: "auto",
-          padding: 12,
+          padding: 16,
         },
       }}
     >
-      <Collapse
-        ghost
-        items={collapseItems}
-      />
+      <Space direction="vertical" size={12}>
+        <Text type="secondary">
+          Поиск выполняется параллельно по выбранным каталогам.
+        </Text>
+
+        <Checkbox.Group
+          options={SOURCE_OPTIONS}
+          value={sources}
+          onChange={setSources}
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+          }}
+        />
+      </Space>
     </Card>
   );
 }
