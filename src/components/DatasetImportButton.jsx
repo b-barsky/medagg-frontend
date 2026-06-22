@@ -210,7 +210,7 @@ export default function DatasetImportButton({ dataset }) {
       disabled={!policyEligible}
       onClick={handlePrimaryClick}
     >
-      {isAuthenticated ? "Импортировать" : "Войти для импорта"}
+      {isAuthenticated ? "Импортировать" : "Требуется вход"}
     </Button>
   );
 
