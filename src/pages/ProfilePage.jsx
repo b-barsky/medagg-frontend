@@ -1,149 +1,313 @@
-import { Card, Avatar, Tag, Button, Form, Input, Row, Col, message } from "antd";
-import { UserOutlined } from "@ant-design/icons";
-import mockUser from "../mock/user";
+import {
+  Alert,
+  Avatar,
+  Button,
+  Card,
+  Col,
+  Divider,
+  Form,
+  Input,
+  Row,
+  Space,
+  Statistic,
+  Typography,
+} from "antd";
+import {
+  DatabaseOutlined,
+  DownloadOutlined,
+  LockOutlined,
+  SaveOutlined,
+  UserOutlined,
+} from "@ant-design/icons";
+import { useEffect, useState } from "react";
+
+import { apiErrorMessage } from "../api/client";
+import { useAuth } from "../auth/useAuth";
+
+const { Paragraph, Text, Title } = Typography;
+const { TextArea } = Input;
+
+function formatBytes(value) {
+  const bytes = Number(value ?? 0);
+
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const index = Math.min(
+    Math.floor(Math.log(bytes) / Math.log(1024)),
+    units.length - 1,
+  );
+  const amount = bytes / 1024 ** index;
+  return `${amount.toFixed(amount >= 10 ? 0 : 1)} ${units[index]}`;
+}
+
+function initials(user) {
+  const first = user?.first_name?.trim()?.[0] ?? "";
+  const last = user?.last_name?.trim()?.[0] ?? "";
+  return (first + last || user?.username?.[0] || "U").toUpperCase();
+}
 
 export default function ProfilePage() {
-    const user = mockUser;
+  const { user, updateProfile, changePassword } = useAuth();
+  const [profileForm] = Form.useForm();
+  const [passwordForm] = Form.useForm();
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [notice, setNotice] = useState(null);
 
-    const roleMap = {
-        admin: { color: "red", label: "Administrator" },
-        member: { color: "blue", label: "Member" },
-    };
+  useEffect(() => {
+    profileForm.setFieldsValue({
+      first_name: user?.first_name ?? "",
+      last_name: user?.last_name ?? "",
+      email: user?.email ?? "",
+      organization: user?.profile?.organization ?? "",
+      job_title: user?.profile?.job_title ?? "",
+      location: user?.profile?.location ?? "",
+      website: user?.profile?.website ?? "",
+      bio: user?.profile?.bio ?? "",
+    });
+  }, [profileForm, user]);
 
-    const roleBadge = roleMap[user.role] || roleMap.member;
+  const saveProfile = async (values) => {
+    setProfileLoading(true);
+    setNotice(null);
 
-    const handleLoginChange = (values) => {
-        message.success("Логин успешно обновлён (пока только mock)");
-    };
+    try {
+      await updateProfile({
+        first_name: values.first_name,
+        last_name: values.last_name,
+        email: values.email,
+        profile: {
+          organization: values.organization,
+          job_title: values.job_title,
+          location: values.location,
+          website: values.website,
+          bio: values.bio,
+        },
+      });
+      setNotice({ type: "success", message: "Профиль обновлён" });
+    } catch (error) {
+      setNotice({
+        type: "error",
+        message: apiErrorMessage(error, "Не удалось обновить профиль"),
+      });
+    } finally {
+      setProfileLoading(false);
+    }
+  };
 
-    const handlePasswordChange = (values) => {
-        message.success("Пароль успешно изменён (пока только mock)");
-    };
+  const savePassword = async (values) => {
+    setPasswordLoading(true);
+    setNotice(null);
 
-    return (
-        <div style={{ width: "100%", display: "flex", justifyContent: "center" }}>
-            <div style={{ width: "100%", maxWidth: 900 }}>
+    try {
+      await changePassword(values);
+      passwordForm.resetFields();
+      setNotice({ type: "success", message: "Пароль изменён" });
+    } catch (error) {
+      setNotice({
+        type: "error",
+        message: apiErrorMessage(error, "Не удалось изменить пароль"),
+      });
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
 
-                <div
-                    style={{
-                        borderRadius: 12,
-                        padding: 28,
-                        color: "#fff",
-                        marginBottom: 30,
-                        background:
-                            "linear-gradient(90deg, rgba(37,99,235,1) 0%, rgba(99,102,241,1) 100%)",
-                        boxShadow: "0 10px 35px rgba(0,0,0,0.1)",
-                    }}
-                >
-                    <Row align="middle" gutter={20}>
-                        <Col>
-                            <Avatar
-                                size={100}
-                                src={user.avatar}
-                                icon={<UserOutlined />}
-                                style={{
-                                    border: "4px solid rgba(255,255,255,0.15)",
-                                    boxShadow: "0 4px 10px rgba(0,0,0,0.2)",
-                                }}
-                            />
-                        </Col>
+  return (
+    <Space direction="vertical" size={24} style={{ display: "flex" }}>
+      <Card bordered={false}>
+        <Row gutter={[24, 24]} align="middle">
+          <Col>
+            <Avatar size={88} icon={<UserOutlined />}>
+              {initials(user)}
+            </Avatar>
+          </Col>
+          <Col flex="auto">
+            <Title level={2} style={{ marginBottom: 4 }}>
+              {user.display_name}
+            </Title>
+            <Text type="secondary">@{user.username}</Text>
+            <Paragraph type="secondary" style={{ marginBottom: 0, marginTop: 8 }}>
+              {user.profile?.job_title || "Пользователь Medagg"}
+              {user.profile?.organization
+                ? ` · ${user.profile.organization}`
+                : ""}
+            </Paragraph>
+          </Col>
+        </Row>
+      </Card>
 
-                        <Col flex="auto">
-                            <div style={{ fontSize: 28, fontWeight: 700 }}>
-                                {user.fullName}
-                            </div>
+      <Row gutter={[16, 16]}>
+        <Col xs={24} md={8}>
+          <Card bordered={false}>
+            <Statistic
+              title="Датасетов в библиотеке"
+              value={user.stats?.dataset_count ?? 0}
+              prefix={<DatabaseOutlined />}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} md={8}>
+          <Card bordered={false}>
+            <Statistic
+              title="Запросов на импорт"
+              value={user.stats?.import_request_count ?? 0}
+              prefix={<DownloadOutlined />}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} md={8}>
+          <Card bordered={false}>
+            <Statistic
+              title="Объём библиотеки"
+              value={formatBytes(user.stats?.total_dataset_bytes)}
+            />
+          </Card>
+        </Col>
+      </Row>
 
-                            <div style={{ opacity: 0.9, marginTop: 6 }}>
-                                @{user.login}
-                            </div>
+      {notice && <Alert showIcon type={notice.type} message={notice.message} />}
 
-                            <Tag color={roleBadge.color} style={{ marginTop: 10 }}>
-                                {roleBadge.label}
-                            </Tag>
-                        </Col>
-                    </Row>
-                </div>
+      <Row gutter={[24, 24]}>
+        <Col xs={24} lg={15}>
+          <Card bordered={false} title="Основная информация">
+            <Form
+              form={profileForm}
+              layout="vertical"
+              onFinish={saveProfile}
+              requiredMark={false}
+            >
+              <Row gutter={16}>
+                <Col xs={24} md={12}>
+                  <Form.Item name="first_name" label="Имя">
+                    <Input autoComplete="given-name" />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} md={12}>
+                  <Form.Item name="last_name" label="Фамилия">
+                    <Input autoComplete="family-name" />
+                  </Form.Item>
+                </Col>
+              </Row>
 
-                <Card
-                    title="Информация профиля"
-                    style={{ borderRadius: 12, marginBottom: 24 }}
-                >
-                    <div style={{ display: "grid", gap: 14 }}>
-                        <div>
-                            <strong>Логин:</strong> {user.login}
-                        </div>
+              <Form.Item
+                name="email"
+                label="Email"
+                rules={[{ type: "email", message: "Некорректный email" }]}
+              >
+                <Input autoComplete="email" />
+              </Form.Item>
 
-                        <div>
-                            <strong>Роль:</strong>{" "}
-                            <Tag color={roleBadge.color}>{roleBadge.label}</Tag>
-                        </div>
+              <Row gutter={16}>
+                <Col xs={24} md={12}>
+                  <Form.Item name="organization" label="Организация">
+                    <Input />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} md={12}>
+                  <Form.Item name="job_title" label="Должность">
+                    <Input />
+                  </Form.Item>
+                </Col>
+              </Row>
 
-                        <div>
-                            <strong>Дата регистрации:</strong>{" "}
-                            {new Date(user.createdAt).toLocaleDateString("ru-RU")}
-                        </div>
-                    </div>
-                </Card>
+              <Row gutter={16}>
+                <Col xs={24} md={12}>
+                  <Form.Item name="location" label="Город / страна">
+                    <Input />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} md={12}>
+                  <Form.Item
+                    name="website"
+                    label="Сайт"
+                    rules={[{ type: "url", message: "Укажите полный URL" }]}
+                  >
+                    <Input placeholder="https://" />
+                  </Form.Item>
+                </Col>
+              </Row>
 
-                <Card
-                    title="Изменить логин"
-                    style={{ borderRadius: 12, marginBottom: 24 }}
-                >
-                    <Form layout="vertical" onFinish={handleLoginChange}>
-                        <Form.Item
-                            label="Новый логин"
-                            name="login"
-                            rules={[{ required: true, message: "Введите новый логин" }]}
-                        >
-                            <Input placeholder="Введите новый логин" />
-                        </Form.Item>
+              <Form.Item name="bio" label="О себе">
+                <TextArea rows={4} maxLength={1000} showCount />
+              </Form.Item>
 
-                        <Button type="primary" htmlType="submit">
-                            Обновить логин
-                        </Button>
-                    </Form>
-                </Card>
+              <Button
+                type="primary"
+                htmlType="submit"
+                icon={<SaveOutlined />}
+                loading={profileLoading}
+              >
+                Сохранить
+              </Button>
+            </Form>
+          </Card>
+        </Col>
 
-                <Card
-                    title="Изменить пароль"
-                    style={{ borderRadius: 12, marginBottom: 24 }}
-                >
-                    <Form layout="vertical" onFinish={handlePasswordChange}>
-                        <Form.Item
-                            label="Старый пароль"
-                            name="oldPassword"
-                            rules={[{ required: true, message: "Введите старый пароль" }]}
-                        >
-                            <Input.Password />
-                        </Form.Item>
+        <Col xs={24} lg={9}>
+          <Card bordered={false} title="Безопасность">
+            <Paragraph type="secondary">
+              Используйте уникальный пароль, который не применяется в других сервисах.
+            </Paragraph>
+            <Divider />
+            <Form
+              form={passwordForm}
+              layout="vertical"
+              onFinish={savePassword}
+              requiredMark={false}
+            >
+              <Form.Item
+                name="current_password"
+                label="Текущий пароль"
+                rules={[{ required: true, message: "Укажите текущий пароль" }]}
+              >
+                <Input.Password
+                  prefix={<LockOutlined />}
+                  autoComplete="current-password"
+                />
+              </Form.Item>
 
-                        <Form.Item
-                            label="Новый пароль"
-                            name="newPassword"
-                            rules={[{ required: true, message: "Введите новый пароль" }]}
-                        >
-                            <Input.Password />
-                        </Form.Item>
+              <Form.Item
+                name="new_password"
+                label="Новый пароль"
+                rules={[{ required: true, message: "Укажите новый пароль" }]}
+              >
+                <Input.Password
+                  prefix={<LockOutlined />}
+                  autoComplete="new-password"
+                />
+              </Form.Item>
 
-                        <Button type="primary" htmlType="submit">
-                            Обновить пароль
-                        </Button>
-                    </Form>
-                </Card>
+              <Form.Item
+                name="new_password_confirm"
+                label="Повторите новый пароль"
+                dependencies={["new_password"]}
+                rules={[
+                  { required: true, message: "Повторите новый пароль" },
+                  ({ getFieldValue }) => ({
+                    validator(_, value) {
+                      if (!value || getFieldValue("new_password") === value) {
+                        return Promise.resolve();
+                      }
+                      return Promise.reject(new Error("Пароли не совпадают"));
+                    },
+                  }),
+                ]}
+              >
+                <Input.Password
+                  prefix={<LockOutlined />}
+                  autoComplete="new-password"
+                />
+              </Form.Item>
 
-                {user.role === "admin" && (
-                    <div style={{ marginBottom: 40 }}>
-                        <Button
-                            type="default"
-                            size="large"
-                            href="/admin"
-                            style={{ borderRadius: 8 }}
-                        >
-                            Перейти в админ-панель Django
-                        </Button>
-                    </div>
-                )}
-            </div>
-        </div>
-    );
+              <Button htmlType="submit" loading={passwordLoading}>
+                Изменить пароль
+              </Button>
+            </Form>
+          </Card>
+        </Col>
+      </Row>
+    </Space>
+  );
 }

@@ -1,43 +1,51 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import AppLayout from "./layout/AppLayout";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
-import SearchPage from "./pages/SearchPage";
-import DatasetsPage from "./pages/DatasetsPage";
-import ProfilePage from "./pages/ProfilePage";
-import DatasetPage from "./pages/DatasetPage";
-import LoginPage from "./pages/LoginPage";
-import RegisterPage from "./pages/RegisterPage";
-
+import { AuthProvider } from "./auth/AuthContext";
+import GuestRoute from "./auth/GuestRoute";
+import ProtectedRoute from "./auth/ProtectedRoute";
 import NotFoundState from "./components/NotFoundState";
+import AppLayout from "./layout/AppLayout";
+import AuthLayout from "./layout/AuthLayout";
+import DatasetPage from "./pages/DatasetPage";
+import DatasetsPage from "./pages/DatasetsPage";
+import LoginPage from "./pages/LoginPage";
+import ProfilePage from "./pages/ProfilePage";
+import RegisterPage from "./pages/RegisterPage";
+import SearchPage from "./pages/SearchPage";
 
 export default function App() {
   return (
     <BrowserRouter>
-      <AppLayout>
+      <AuthProvider>
         <Routes>
-          <Route path="/" element={<Navigate to="/search" />} />
-          <Route path="/search" element={<SearchPage />} />
+          <Route element={<AppLayout />}>
+            <Route index element={<Navigate to="/search" replace />} />
+            <Route path="search" element={<SearchPage />} />
 
-          <Route path="/datasets" element={<DatasetsPage />} />
-          <Route path="/datasets/:id" element={<DatasetPage />} />
+            <Route element={<ProtectedRoute />}>
+              <Route path="datasets" element={<DatasetsPage />} />
+              <Route path="datasets/:id" element={<DatasetPage />} />
+              <Route path="profile" element={<ProfilePage />} />
+              <Route
+                path="me"
+                element={<Navigate to="/profile" replace />}
+              />
+            </Route>
+          </Route>
 
-          <Route path="/profile" element={<ProfilePage />} />
-
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
+          <Route element={<GuestRoute />}>
+            <Route element={<AuthLayout />}>
+              <Route path="login" element={<LoginPage />} />
+              <Route path="register" element={<RegisterPage />} />
+            </Route>
+          </Route>
 
           <Route
             path="*"
-            element={
-              <NotFoundState
-                title="Страница не найдена"
-                subTitle="Проверьте адрес или начните с главной"
-              />
-            }
+            element={<NotFoundState title="Страница не найдена" subTitle="Проверьте адрес и попробуйте снова" />}
           />
-
         </Routes>
-      </AppLayout>
+      </AuthProvider>
     </BrowserRouter>
   );
 }

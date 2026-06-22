@@ -1,107 +1,139 @@
-import { Card, Form, Input, Button, Typography, Alert } from "antd";
-import { LockOutlined, MailOutlined } from "@ant-design/icons";
+import { Alert, Button, Col, Form, Input, Row, Space, Typography } from "antd";
+import { LockOutlined, MailOutlined, UserOutlined } from "@ant-design/icons";
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
-const { Title, Text } = Typography;
+import { apiErrorMessage } from "../api/client";
+import { useAuth } from "../auth/useAuth";
+
+const { Paragraph, Title } = Typography;
+
+function safeDestination(value, fallback) {
+  return (
+    typeof value === "string" &&
+    value.startsWith("/") &&
+    !value.startsWith("//")
+  )
+    ? value
+    : fallback;
+}
 
 export default function RegisterPage() {
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState(null);
+  const { signUp } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const destination = safeDestination(
+    location.state?.from,
+    "/profile",
+  );
 
-    const onFinish = (values) => {
-        setLoading(true);
-        setError(null);
+  const onFinish = async (values) => {
+    setLoading(true);
+    setError("");
 
-        // TODO: replace with real API
-        setTimeout(() => {
-            setLoading(false);
-            setError("Пользователь с таким email уже существует");
-        }, 1000);
-    };
+    try {
+      await signUp(values);
+      navigate(destination, { replace: true });
+    } catch (requestError) {
+      setError(apiErrorMessage(requestError, "Не удалось создать аккаунт"));
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    return (
-        <Card style={{ width: 380 }}>
-            <Title level={3} style={{ textAlign: "center" }}>
-                Регистрация
-            </Title>
+  return (
+    <>
+      <Title level={3} style={{ marginBottom: 4 }}>
+        Регистрация
+      </Title>
+      <Paragraph type="secondary">
+        Создайте аккаунт для импорта и хранения личной коллекции датасетов.
+      </Paragraph>
 
-            <Form layout="vertical" onFinish={onFinish}>
-                {error && (
-                    <Alert
-                        type="error"
-                        message={error}
-                        showIcon
-                        style={{ marginBottom: 16 }}
-                    />
-                )}
+      {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 20 }} />}
 
-                <Form.Item
-                    label="Ваш логин"
-                    name="email"
-                    rules={[{ required: true, type: "email" }]}
-                >
-                    <Input prefix={<MailOutlined />} />
-                </Form.Item>
+      <Form layout="vertical" onFinish={onFinish} requiredMark={false}>
+        <Form.Item
+          name="username"
+          label="Логин"
+          rules={[
+            { required: true, message: "Укажите логин" },
+            { min: 3, message: "Минимум 3 символа" },
+          ]}
+        >
+          <Input prefix={<UserOutlined />} autoComplete="username" size="large" />
+        </Form.Item>
 
-                <Form.Item
-                    label="Пароль"
-                    name="password"
-                    rules={[
-                        {
-                            required: true,
-                            message: "Введите пароль",
-                        },
-                        {
-                            min: 6,
-                            message: "Пароль должен содержать минимум 6 символов",
-                        },
-                    ]}
-                >
-                    <Input.Password />
-                </Form.Item>
+        <Form.Item
+          name="email"
+          label="Email"
+          rules={[
+            { required: true, message: "Укажите email" },
+            { type: "email", message: "Некорректный email" },
+          ]}
+        >
+          <Input prefix={<MailOutlined />} autoComplete="email" size="large" />
+        </Form.Item>
 
+        <Row gutter={12}>
+          <Col span={12}>
+            <Form.Item name="first_name" label="Имя">
+              <Input autoComplete="given-name" />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            <Form.Item name="last_name" label="Фамилия">
+              <Input autoComplete="family-name" />
+            </Form.Item>
+          </Col>
+        </Row>
 
-                <Form.Item
-                    label="Повторите пароль"
-                    name="passwordConfirm"
-                    dependencies={["password"]}
-                    rules={[
-                        { required: true },
-                        ({ getFieldValue }) => ({
-                            validator(_, value) {
-                                if (
-                                    !value ||
-                                    getFieldValue("password") === value
-                                ) {
-                                    return Promise.resolve();
-                                }
-                                return Promise.reject(
-                                    new Error("Пароли не совпадают")
-                                );
-                            },
-                        }),
-                    ]}
-                >
-                    <Input.Password prefix={<LockOutlined />} />
-                </Form.Item>
+        <Form.Item
+          name="password"
+          label="Пароль"
+          rules={[{ required: true, message: "Укажите пароль" }]}
+        >
+          <Input.Password
+            prefix={<LockOutlined />}
+            autoComplete="new-password"
+            size="large"
+          />
+        </Form.Item>
 
-                <Button
-                    type="primary"
-                    htmlType="submit"
-                    block
-                    loading={loading}
-                >
-                    Создать аккаунт
-                </Button>
+        <Form.Item
+          name="password_confirm"
+          label="Повторите пароль"
+          dependencies={["password"]}
+          rules={[
+            { required: true, message: "Повторите пароль" },
+            ({ getFieldValue }) => ({
+              validator(_, value) {
+                if (!value || getFieldValue("password") === value) {
+                  return Promise.resolve();
+                }
+                return Promise.reject(new Error("Пароли не совпадают"));
+              },
+            }),
+          ]}
+        >
+          <Input.Password
+            prefix={<LockOutlined />}
+            autoComplete="new-password"
+            size="large"
+          />
+        </Form.Item>
 
-                <Text
-                    type="secondary"
-                    style={{ display: "block", marginTop: 16, textAlign: "center" }}
-                >
-                    Уже есть аккаунт? <Link to="/login">Войти</Link>
-                </Text>
-            </Form>
-        </Card>
-    );
+        <Button type="primary" htmlType="submit" loading={loading} block size="large">
+          Создать аккаунт
+        </Button>
+      </Form>
+
+      <Space style={{ display: "flex", justifyContent: "center", marginTop: 20 }}>
+        <span>Уже есть аккаунт?</span>
+        <Link to="/login" state={location.state}>Войти</Link>
+      </Space>
+    </>
+  );
 }

@@ -14,32 +14,24 @@ import {
   CheckCircleOutlined,
   CloudDownloadOutlined,
   LoadingOutlined,
+  LoginOutlined,
 } from "@ant-design/icons";
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
+import { apiErrorMessage } from "../api/client";
 import {
   createDatasetImport,
   getDatasetImport,
 } from "../api/datasets";
-
+import { useAuth } from "../auth/useAuth";
 
 const { Paragraph, Text } = Typography;
 const DEFAULT_POLL_INTERVAL_MS = 1500;
-const MAX_POLL_RETRY_MS = 15000;
-const REQUEST_TIMEOUT_MS = 15000;
+const MAX_POLL_INTERVAL_MS = 15000;
 
 const IMPORT_STATUS = {
-  queued: {
-    color: "default",
-    label: "В очереди",
-    percent: 15,
-  },
+  queued: { color: "default", label: "В очереди", percent: 15 },
   running: {
     color: "processing",
     label: "Загрузка и сохранение",
@@ -52,7 +44,7 @@ const IMPORT_STATUS = {
   },
   succeeded: {
     color: "success",
-    label: "Импорт завершён",
+    label: "Добавлено в вашу библиотеку",
     percent: 100,
   },
   failed: {
@@ -70,13 +62,8 @@ const IMPORT_STATUS = {
 function formatBytes(value) {
   const bytes = Number(value);
 
-  if (!Number.isFinite(bytes) || bytes < 0) {
-    return "Неизвестно";
-  }
-
-  if (bytes === 0) {
-    return "0 B";
-  }
+  if (!Number.isFinite(bytes) || bytes < 0) return "Неизвестно";
+  if (bytes === 0) return "0 B";
 
   const units = ["B", "KB", "MB", "GB", "TB"];
   const index = Math.min(
@@ -84,261 +71,155 @@ function formatBytes(value) {
     units.length - 1,
   );
   const amount = bytes / 1024 ** index;
-
   return `${amount.toFixed(amount >= 10 ? 0 : 1)} ${units[index]}`;
-}
-
-function errorMessage(error) {
-  const policyMessage = error?.payload?.policy?.message;
-
-  return (
-    policyMessage ||
-    error?.message ||
-    "Не удалось импортировать датасет."
-  );
-}
-
-function isPermanentPollError(error) {
-  const status = Number(error?.status);
-
-  return (
-    Number.isInteger(status) &&
-    status >= 400 &&
-    status < 500 &&
-    ![408, 429].includes(status)
-  );
 }
 
 export default function DatasetImportButton({ dataset }) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { isAuthenticated, refreshUser } = useAuth();
   const [open, setOpen] = useState(false);
   const [accepted, setAccepted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [importRun, setImportRun] = useState(null);
   const [error, setError] = useState("");
-  const controllerRef = useRef(null);
-  const pollTimerRef = useRef(null);
-  const pollFunctionRef = useRef(null);
-  const pollFailureCountRef = useRef(0);
-  const sequenceRef = useRef(0);
+  const [pollFailureCount, setPollFailureCount] = useState(0);
+  const refreshedImportId = useRef(null);
 
   const policy = dataset?.import_policy;
-  const eligible = (
-    policy?.can_request_import ?? policy?.eligible
-  ) === true;
-  const statusInfo = IMPORT_STATUS[importRun?.status];
+  const policyEligible = policy?.eligible === true;
   const isTerminal = importRun?.is_terminal === true;
   const succeeded = importRun?.status === "succeeded";
+  const statusInfo = IMPORT_STATUS[importRun?.status];
   const licenses = Array.isArray(policy?.license_names)
     ? policy.license_names
     : [];
 
-  const stopRequests = useCallback(() => {
-    sequenceRef.current += 1;
-    pollFailureCountRef.current = 0;
-    controllerRef.current?.abort();
-    controllerRef.current = null;
-
-    if (pollTimerRef.current !== null) {
-      window.clearTimeout(pollTimerRef.current);
-      pollTimerRef.current = null;
-    }
-  }, []);
-
-  const schedulePoll = useCallback(
-    (importId, sequence, delayMs) => {
-      if (sequenceRef.current !== sequence) {
-        return;
-      }
-
-      if (pollTimerRef.current !== null) {
-        window.clearTimeout(pollTimerRef.current);
-      }
-
-      pollTimerRef.current = window.setTimeout(() => {
-        pollTimerRef.current = null;
-        pollFunctionRef.current?.(importId, sequence);
-      }, delayMs);
-    },
-    [],
-  );
-
-  const pollImport = useCallback(
-    async (importId, sequence) => {
-      if (sequenceRef.current !== sequence) {
-        return;
-      }
-
-      const controller = new AbortController();
-      controllerRef.current = controller;
-      let timedOut = false;
-      const timeout = window.setTimeout(() => {
-        timedOut = true;
-        controller.abort();
-      }, REQUEST_TIMEOUT_MS);
-
-      try {
-        const response = await getDatasetImport(importId, {
-          signal: controller.signal,
-        });
-
-        if (sequenceRef.current !== sequence) {
-          return;
-        }
-
-        pollFailureCountRef.current = 0;
-        setImportRun(response);
-        setError("");
-
-        if (!response.is_terminal) {
-          schedulePoll(
-            importId,
-            sequence,
-            response.poll_after_ms ?? DEFAULT_POLL_INTERVAL_MS,
-          );
-        }
-      } catch (requestError) {
-        if (sequenceRef.current !== sequence) {
-          return;
-        }
-
-        setError(
-          timedOut
-            ? "Сервер долго не отвечает. Статус будет запрошен снова."
-            : errorMessage(requestError),
-        );
-
-        if (!isPermanentPollError(requestError)) {
-          pollFailureCountRef.current += 1;
-          const retryDelay = Math.min(
-            DEFAULT_POLL_INTERVAL_MS *
-              2 ** Math.min(pollFailureCountRef.current, 4),
-            MAX_POLL_RETRY_MS,
-          );
-
-          schedulePoll(importId, sequence, retryDelay);
-        }
-      } finally {
-        window.clearTimeout(timeout);
-
-        if (controllerRef.current === controller) {
-          controllerRef.current = null;
-        }
-      }
-    },
-    [schedulePoll],
+  const signInDestination = useMemo(
+    () => `${location.pathname}${location.search}`,
+    [location.pathname, location.search],
   );
 
   useEffect(() => {
-    pollFunctionRef.current = pollImport;
+    if (!importRun?.id || importRun.is_terminal) return undefined;
+
+    const controller = new AbortController();
+    const delay = Math.min(
+      importRun.poll_after_ms ??
+        DEFAULT_POLL_INTERVAL_MS * 2 ** Math.min(pollFailureCount, 4),
+      MAX_POLL_INTERVAL_MS,
+    );
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await getDatasetImport(importRun.id, {
+          signal: controller.signal,
+        });
+        setImportRun(response);
+        setPollFailureCount(0);
+        setError("");
+      } catch (requestError) {
+        if (requestError?.name === "AbortError") return;
+        setPollFailureCount((value) => value + 1);
+        setError(
+          apiErrorMessage(
+            requestError,
+            "Не удалось обновить статус импорта. Повторяем запрос.",
+          ),
+        );
+      }
+    }, delay);
 
     return () => {
-      pollFunctionRef.current = null;
-      stopRequests();
+      controller.abort();
+      window.clearTimeout(timer);
     };
-  }, [pollImport, stopRequests]);
+  }, [importRun, pollFailureCount]);
+
+  useEffect(() => {
+    if (
+      importRun?.status === "succeeded" &&
+      refreshedImportId.current !== importRun.id
+    ) {
+      refreshedImportId.current = importRun.id;
+      refreshUser().catch(() => undefined);
+    }
+  }, [importRun, refreshUser]);
 
   const closeModal = () => {
-    stopRequests();
     setOpen(false);
     setAccepted(false);
     setSubmitting(false);
     setImportRun(null);
     setError("");
+    setPollFailureCount(0);
   };
 
-  const startImport = async () => {
-    if (!accepted || !policy?.license_fingerprint) {
+  const handlePrimaryClick = () => {
+    if (!isAuthenticated) {
+      navigate("/login", {
+        state: { from: signInDestination },
+      });
       return;
     }
 
-    stopRequests();
-    const sequence = sequenceRef.current;
+    setAccepted(false);
+    setImportRun(null);
+    setError("");
+    setPollFailureCount(0);
+    setOpen(true);
+  };
+
+  const startImport = async () => {
+    if (!accepted || !policy?.license_fingerprint) return;
+
     setSubmitting(true);
     setError("");
-
-    const controller = new AbortController();
-    controllerRef.current = controller;
-    let timedOut = false;
-    const timeout = window.setTimeout(() => {
-      timedOut = true;
-      controller.abort();
-    }, REQUEST_TIMEOUT_MS);
 
     try {
       const response = await createDatasetImport(
         dataset.id,
         policy.license_fingerprint,
-        { signal: controller.signal },
       );
+      setImportRun(response);
 
-      if (sequenceRef.current !== sequence) {
+      if (response.status === "succeeded") {
+        await refreshUser().catch(() => undefined);
+      }
+    } catch (requestError) {
+      if ([401, 403].includes(requestError?.status)) {
+        closeModal();
+        navigate("/login", {
+          state: { from: signInDestination },
+        });
         return;
       }
 
-      setImportRun(response);
-
-      if (!response.is_terminal) {
-        schedulePoll(
-          response.id,
-          sequence,
-          response.poll_after_ms ?? DEFAULT_POLL_INTERVAL_MS,
-        );
-      }
-    } catch (requestError) {
-      if (sequenceRef.current === sequence) {
-        setError(
-          timedOut
-            ? "Сервер слишком долго не отвечает. Повторите запуск импорта."
-            : errorMessage(requestError),
-        );
-      }
+      setError(
+        apiErrorMessage(requestError, "Не удалось запустить импорт"),
+      );
     } finally {
-      window.clearTimeout(timeout);
-
-      if (sequenceRef.current === sequence) {
-        setSubmitting(false);
-      }
-
-      if (controllerRef.current === controller) {
-        controllerRef.current = null;
-      }
+      setSubmitting(false);
     }
-  };
-
-  const openModal = () => {
-    stopRequests();
-    setAccepted(false);
-    setImportRun(null);
-    setError("");
-    setOpen(true);
   };
 
   const button = (
     <Button
       type="primary"
-      icon={
-        importRun && !isTerminal
-          ? <LoadingOutlined />
-          : <CloudDownloadOutlined />
-      }
-      disabled={!eligible}
-      onClick={openModal}
+      icon={isAuthenticated ? <CloudDownloadOutlined /> : <LoginOutlined />}
+      disabled={!policyEligible}
+      onClick={handlePrimaryClick}
     >
-      Импортировать
+      {isAuthenticated ? "Импортировать" : "Войти для импорта"}
     </Button>
   );
 
   return (
     <>
-      {eligible ? button : (
-        <Tooltip
-          title={
-            policy?.request_message ??
-            policy?.message ??
-            "Импорт пока недоступен для этого датасета."
-          }
-        >
+      {policyEligible ? (
+        button
+      ) : (
+        <Tooltip title={policy?.request_message ?? policy?.message}>
           <span>{button}</span>
         </Tooltip>
       )}
@@ -355,30 +236,32 @@ export default function DatasetImportButton({ dataset }) {
                   Закрыть
                 </Button>,
                 <Button
-                  key="dataset"
+                  key="open"
                   type="primary"
                   icon={<CheckCircleOutlined />}
                   onClick={() => {
+                    const datasetId = importRun?.dataset_id;
                     closeModal();
-                    navigate(`/datasets/${importRun.dataset_id}`);
+                    navigate(`/datasets/${datasetId}`);
                   }}
                 >
                   Открыть датасет
                 </Button>,
               ]
             : [
-                <Button key="cancel" onClick={closeModal}>
+                <Button key="close" onClick={closeModal}>
                   Закрыть
                 </Button>,
                 <Button
-                  key="import"
+                  key="start"
                   type="primary"
-                  icon={<CloudDownloadOutlined />}
-                  loading={submitting}
-                  disabled={
-                    !accepted ||
-                    Boolean(importRun && !isTerminal)
+                  icon={
+                    submitting || (importRun && !isTerminal)
+                      ? <LoadingOutlined />
+                      : <CloudDownloadOutlined />
                   }
+                  loading={submitting}
+                  disabled={!accepted || Boolean(importRun && !isTerminal)}
                   onClick={startImport}
                 >
                   Начать импорт
@@ -386,16 +269,11 @@ export default function DatasetImportButton({ dataset }) {
               ]
         }
       >
-        <Space
-          direction="vertical"
-          size={16}
-          style={{ width: "100%" }}
-        >
-          <Paragraph>
-            <Text strong>{dataset.title}</Text>
-          </Paragraph>
-
-          <Descriptions size="small" column={1} bordered>
+        <Space direction="vertical" size={18} style={{ display: "flex" }}>
+          <Descriptions column={1} size="small" bordered>
+            <Descriptions.Item label="Датасет">
+              {dataset.title}
+            </Descriptions.Item>
             <Descriptions.Item label="Источник">
               {dataset.source?.name ?? "Неизвестно"}
             </Descriptions.Item>
@@ -403,48 +281,35 @@ export default function DatasetImportButton({ dataset }) {
               {formatBytes(dataset.total_bytes)}
             </Descriptions.Item>
             <Descriptions.Item label="Лицензия">
-              <Space wrap>
-                {licenses.length > 0
-                  ? licenses.map((license) => (
-                      <Tag key={license}>{license}</Tag>
-                    ))
-                  : "Не указана"}
-              </Space>
+              {licenses.length > 0
+                ? licenses.map((license) => (
+                    <Tag key={license}>{license}</Tag>
+                  ))
+                : "Не указана"}
             </Descriptions.Item>
           </Descriptions>
 
-          <Alert
-            type="info"
-            showIcon
-            message="Проверка лицензии"
-            description={
-              "Medagg сохраняет снимок лицензии и версии источника. " +
-              "Импорт будет остановлен, если эти сведения изменятся " +
-              "до завершения загрузки."
-            }
-          />
-
           {!importRun && (
-            <Checkbox
-              checked={accepted}
-              onChange={(event) => {
-                setAccepted(event.target.checked);
-              }}
-            >
-              Я ознакомился с лицензией источника и принимаю её условия.
-            </Checkbox>
+            <>
+              <Alert
+                type="info"
+                showIcon
+                message="Файл хранится один раз"
+                description="Если этот датасет уже импортирован другим пользователем, он будет добавлен в вашу библиотеку без повторного скачивания и копирования."
+              />
+              <Checkbox
+                checked={accepted}
+                onChange={(event) => setAccepted(event.target.checked)}
+              >
+                Я ознакомился с лицензией источника и принимаю её условия.
+              </Checkbox>
+            </>
           )}
 
           {statusInfo && (
-            <Space
-              direction="vertical"
-              size={8}
-              style={{ width: "100%" }}
-            >
+            <>
               <Space wrap>
-                <Tag color={statusInfo.color}>
-                  {statusInfo.label}
-                </Tag>
+                <Tag color={statusInfo.color}>{statusInfo.label}</Tag>
                 {importRun.attempt_count > 0 && (
                   <Text type="secondary">
                     Попытка {importRun.attempt_count}
@@ -460,21 +325,34 @@ export default function DatasetImportButton({ dataset }) {
                       ? "success"
                       : "active"
                 }
-                showInfo={false}
               />
-            </Space>
+            </>
+          )}
+
+          {succeeded && (
+            <Alert
+              type="success"
+              showIcon
+              message="Датасет доступен в вашей библиотеке"
+              description={
+                importRun.access_granted
+                  ? "Можно открыть метаданные и скачать доступные артефакты."
+                  : "Доступ подтверждается. Обновите статус через несколько секунд."
+              }
+            />
           )}
 
           {(error || importRun?.error?.message) && (
             <Alert
               type="error"
               showIcon
-              message="Ошибка импорта"
-              description={
-                error || importRun?.error?.message
-              }
+              message={error || importRun.error.message}
             />
           )}
+
+          <Paragraph type="secondary" style={{ marginBottom: 0 }}>
+            Medagg проверяет лицензию и доступ перед загрузкой. Принятие условий не заменяет юридическую оценку допустимого использования данных.
+          </Paragraph>
         </Space>
       </Modal>
     </>
