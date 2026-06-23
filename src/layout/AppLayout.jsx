@@ -10,13 +10,13 @@ import {
 } from "antd";
 import {
   DatabaseOutlined,
+  ExperimentOutlined,
   LoginOutlined,
   LogoutOutlined,
   SearchOutlined,
   UserOutlined,
 } from "@ant-design/icons";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
-
 import { useAuth } from "../auth/useAuth";
 
 const { Header, Content, Footer } = Layout;
@@ -36,23 +36,18 @@ export default function AppLayout() {
 
   const selectedKey = location.pathname.startsWith("/datasets")
     ? "datasets"
-    : location.pathname.startsWith("/profile")
-      ? "profile"
-      : "search";
+    : location.pathname.startsWith("/builder")
+      ? "builder"
+      : location.pathname.startsWith("/profile")
+        ? "profile"
+        : "search";
 
   const menuItems = [
-    {
-      key: "search",
-      icon: <SearchOutlined />,
-      label: <Link to="/search">Поиск</Link>,
-    },
+    { key: "search", icon: <SearchOutlined />, label: "Поиск" },
     ...(isAuthenticated
       ? [
-          {
-            key: "datasets",
-            icon: <DatabaseOutlined />,
-            label: <Link to="/datasets">Мои датасеты</Link>,
-          },
+          { key: "datasets", icon: <DatabaseOutlined />, label: "Мои датасеты" },
+          { key: "builder", icon: <ExperimentOutlined />, label: "Конструктор" },
         ]
       : []),
   ];
@@ -84,48 +79,39 @@ export default function AppLayout() {
   };
 
   return (
-    <Layout style={{ minHeight: "100vh", background: "#f5f7fb" }}>
+    <Layout style={{ minHeight: "100vh" }}>
       {contextHolder}
       <Header
         style={{
-          alignItems: "center",
-          background: "#ffffff",
-          borderBottom: "1px solid #edf0f5",
           display: "flex",
+          alignItems: "center",
           gap: 24,
-          height: 72,
-          paddingInline: 32,
+          paddingInline: 24,
+          background: "#ffffff",
+          borderBottom: "1px solid #f0f0f0",
         }}
       >
-        <Link
-          to="/search"
-          style={{ alignItems: "center", display: "flex", minWidth: 170 }}
-        >
-          <Title level={3} style={{ color: "#1677ff", margin: 0 }}>
+        <Link to="/search" style={{ whiteSpace: "nowrap" }}>
+          <Title level={3} style={{ margin: 0 }}>
             Medagg
           </Title>
         </Link>
-
         <Menu
           mode="horizontal"
           selectedKeys={[selectedKey]}
           items={menuItems}
-          style={{ borderBottom: 0, flex: 1, minWidth: 0 }}
+          onClick={({ key }) => navigate(`/${key}`)}
+          style={{ flex: 1, minWidth: 0, borderBottom: 0 }}
         />
-
         {isAuthenticated ? (
-          <Dropdown menu={userMenu} trigger={["click"]} placement="bottomRight">
-            <Button type="text" style={{ height: 48, paddingInline: 8 }}>
+          <Dropdown menu={userMenu} trigger={["click"]}>
+            <Button type="text" style={{ height: "auto" }}>
               <Space>
                 <Avatar>{initials(user)}</Avatar>
-                <span style={{ textAlign: "left" }}>
-                  <Text strong style={{ display: "block" }}>
-                    {user.display_name}
-                  </Text>
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    @{user.username}
-                  </Text>
-                </span>
+                <Space direction="vertical" size={0} align="start">
+                  <Text strong>{user.display_name}</Text>
+                  <Text type="secondary">@{user.username}</Text>
+                </Space>
               </Space>
             </Button>
           </Dropdown>
@@ -140,21 +126,10 @@ export default function AppLayout() {
           </Space>
         )}
       </Header>
-
-      <Content
-        style={{
-          margin: "0 auto",
-          maxWidth: 1440,
-          padding: "32px 24px 48px",
-          width: "100%",
-        }}
-      >
+      <Content style={{ width: "100%", maxWidth: 1440, margin: "0 auto", padding: 24 }}>
         <Outlet />
       </Content>
-
-      <Footer style={{ background: "transparent", textAlign: "center" }}>
-        <Text type="secondary">Medagg · 2026</Text>
-      </Footer>
+      <Footer style={{ textAlign: "center" }}>Medagg · 2026</Footer>
     </Layout>
   );
 }
